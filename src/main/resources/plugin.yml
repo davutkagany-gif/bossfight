@@ -1,0 +1,15 @@
+name: BossFight
+version: 1.0.0
+main: com.example.bossfight.BossFightPlugin
+api-version: '1.21'
+author: example
+description: Trap-plate triggered arena boss fight with waves and a boss drop.
+commands:
+  bossfight:
+    description: BossFight admin commands.
+    usage: /bossfight <spawnplate|setarena|reload>
+    permission: bossfight.admin
+permissions:
+  bossfight.admin:
+    description: Allows using BossFight admin commands.
+    default: op

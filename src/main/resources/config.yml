@@ -1,0 +1,60 @@
+# ==========================================================
+#  BossFight config
+# ==========================================================
+
+# Plakanın spawn olma şansı (%). Örn: 15.0 => %15
+plate-spawn-chance: 15.0
+
+# Plaka spawn denemesi kaç saniyede bir yapılır (her online oyuncu için).
+plate-spawn-interval-seconds: 60
+
+# Plaka oyuncunun etrafında hangi yarıçapta (blok) spawn edilir.
+plate-spawn-radius: 20
+
+# Plakalar bu chunk yarıçapı içinde spawn edilir (32 chunk = 32*16 = 512 blok).
+region-chunk-radius: 32
+
+# Aynı anda dünyada en fazla kaç plaka bulunabilir.
+max-active-plates: 3
+
+# Arena koordinatı. /bossfight setarena ile in-game de ayarlanır.
+arena:
+  world: world
+  x: 0.5
+  y: 100.0
+  z: 0.5
+
+# Wave ayarları. Her wave için toplam mob sayısı.
+waves:
+  - 6
+  - 8
+  - 10
+
+# Boss vurulunca kılıcı düşürme şansı (%). 15 => %15
+boss-drop-chance: 15.0
+
+# Boss can değeri.
+boss-health: 10000.0
+
+# Boss yetenek cooldownları (saniye).
+boss-teleport-cooldown-seconds: 20
+boss-fireball-cooldown-seconds: 30
+
+# Boss ismi (üstünde görünür).
+boss-name: "&cKadim Zombi"
+
+# Kılıç ismi.
+sword-name: "&6Kadim Kılıç"
+
+# Kılıç hasarı (toplam vuruş hasarı). 200 => tek vuruşta 200 hasar.
+sword-damage: 200.0
+
+# Özel zırf düşme şansı (%). 5 => %5
+armor-drop-chance: 5.0
+
+# Zırh ismi.
+armor-name: "&5Kadim Zırh"
+
+# Tam Kadim zırh seti giyildiğinde alınan hasar azaltma oranı (0.0 - 1.0).
+# 0.9 => %90 azaltma. 200 hasarlık kılıç bu sayede ~20 hasara düşer, oyuncu dayanır.
+armor-set-damage-reduction: 0.92
