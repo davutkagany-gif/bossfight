@@ -328,12 +328,12 @@ public class ArenaManager implements Listener {
      */
     @EventHandler
     public void onEntityExplode(org.bukkit.event.entity.EntityExplodeEvent event) {
-        event.blockList().removeIf(this::isInArenaZone);
+        event.blockList().removeIf(block -> isInArenaZone(block.getLocation()));
     }
 
     @EventHandler
     public void onBlockExplode(org.bukkit.event.block.BlockExplodeEvent event) {
-        event.blockList().removeIf(this::isInArenaZone);
+        event.blockList().removeIf(block -> isInArenaZone(block.getLocation()));
     }
 
     /**
