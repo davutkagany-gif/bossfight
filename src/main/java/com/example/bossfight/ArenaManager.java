@@ -261,8 +261,12 @@ public class ArenaManager implements Listener {
         }
         var maxHealth = boss.getAttribute(Attribute.MAX_HEALTH);
         if (maxHealth != null) {
+            // Not: MAX_HEALTH attribute'unun oyun içi üst sınırı vardır.
+            // Önce baz değeri ayarla, sonra o attribute'un izin verdiği
+            // gerçek max değere göre canı doldur (exception önlenir).
             maxHealth.setBaseValue(bossHealth);
-            boss.setHealth(bossHealth);
+            double effectiveMax = maxHealth.getValue();
+            boss.setHealth(effectiveMax);
         }
         boss.customName(legacyComponent(bossName));
         boss.setCustomNameVisible(true);
