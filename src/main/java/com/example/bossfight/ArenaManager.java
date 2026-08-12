@@ -46,6 +46,8 @@ public class ArenaManager implements Listener {
     private double bossHealth;
     private long teleportCooldownMs;
     private long fireballCooldownMs;
+    private double healAmount;
+    private long healCooldownMs;
     private String bossName;
     private String swordName;
     private double swordDamage;
@@ -87,6 +89,8 @@ public class ArenaManager implements Listener {
         this.bossHealth = plugin.getConfig().getDouble("boss-health", 150.0);
         this.teleportCooldownMs = plugin.getConfig().getLong("boss-teleport-cooldown-seconds", 20) * 1000L;
         this.fireballCooldownMs = plugin.getConfig().getLong("boss-fireball-cooldown-seconds", 30) * 1000L;
+        this.healAmount = plugin.getConfig().getDouble("boss-heal-amount", 500.0);
+        this.healCooldownMs = plugin.getConfig().getLong("boss-heal-cooldown-seconds", 20) * 1000L;
         this.bossName = color(plugin.getConfig().getString("boss-name", "&cKadim Zombi"));
         this.swordName = color(plugin.getConfig().getString("sword-name", "&6Kadim Kılıç"));
         this.swordDamage = plugin.getConfig().getDouble("sword-damage", 200.0);
@@ -279,6 +283,7 @@ public class ArenaManager implements Listener {
         long now = System.currentTimeMillis();
         session.lastTeleport = now;
         session.lastFireball = now;
+        session.lastHeal = now;
 
         startBossAbilities();
     }
@@ -309,6 +314,24 @@ public class ArenaManager implements Listener {
                 }
 
                 long now = System.currentTimeMillis();
+
+                // Can yenileme: can %50'nin altına inince, 20 sn cooldown ile heal et.
+                var maxHealthAttr = boss.getAttribute(Attribute.MAX_HEALTH);
+                if (maxHealthAttr != null) {
+                    double maxHp = maxHealthAttr.getValue();
+                    double curHp = boss.getHealth();
+                    if (curHp < maxHp * 0.5 && now - session.lastHeal >= healCooldownMs) {
+                        double newHp = Math.min(maxHp, curHp + healAmount);
+                        boss.setHealth(newHp);
+                        session.lastHeal = now;
+                        boss.getWorld().playSound(boss.getLocation(),
+                                org.bukkit.Sound.ENTITY_WITHER_SPAWN, 0.6f, 1.5f);
+                        Player p = Bukkit.getPlayer(session.playerId);
+                        if (p != null) {
+                            p.sendMessage("§cBoss canını yeniledi!");
+                        }
+                    }
+                }
 
                 // Işınlanma: cooldown (varsayılan 20 sn).
                 if (now - session.lastTeleport >= teleportCooldownMs) {
@@ -553,7 +576,7 @@ public class ArenaManager implements Listener {
         }
     }
 
-    private ItemStack createSword() {
+    public ItemStack createSword() {
         ItemStack sword = new ItemStack(Material.NETHERITE_SWORD);
         ItemMeta meta = sword.getItemMeta();
         if (meta != null) {
@@ -585,7 +608,7 @@ public class ArenaManager implements Listener {
      * Bu kılıcın (200 hasar) karşısında oyuncunun hayatta kalabilmesi için
      * yüksek armor, armor toughness ve Protection IV verilir.
      */
-    private List<ItemStack> createArmorSet() {
+    public List<ItemStack> createArmorSet() {
         List<ItemStack> pieces = new ArrayList<>();
         pieces.add(createArmorPiece(Material.NETHERITE_HELMET, "Miğfer", 8.0, 4.0));
         pieces.add(createArmorPiece(Material.NETHERITE_CHESTPLATE, "Göğüslük", 16.0, 5.0));
@@ -725,6 +748,7 @@ public class ArenaManager implements Listener {
         org.bukkit.scheduler.BukkitTask abilityTask;
         long lastTeleport = 0L;   // son ışınlanma zamanı (ms)
         long lastFireball = 0L;   // son ateş topu zamanı (ms)
+        long lastHeal = 0L;       // son can yenileme zamanı (ms)
 
         ArenaSession(UUID playerId) {
             this.playerId = playerId;
