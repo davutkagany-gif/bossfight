@@ -40,6 +40,11 @@ boss-health: 10000.0
 boss-teleport-cooldown-seconds: 20
 boss-fireball-cooldown-seconds: 30
 
+# Boss can yenileme: can %50'nin altına inince bu kadar can yeniler.
+boss-heal-amount: 500.0
+# Can yenileme en fazla bu kadar saniyede bir olur.
+boss-heal-cooldown-seconds: 20
+
 # Boss ismi (üstünde görünür).
 boss-name: "&cKadim Zombi"
 
