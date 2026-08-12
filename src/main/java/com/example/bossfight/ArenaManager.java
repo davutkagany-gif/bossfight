@@ -101,23 +101,38 @@ public class ArenaManager implements Listener {
 
     /**
      * Oyuncu için boss fight başlatır.
+     * Plakanın 1000 blok üstünde 32x32x32 cam kutu oluşturur ve fight orada geçer.
      * @param entryLocation oyuncunun plakaya bastığı yer (fight bitince buraya döner).
      */
     public void startFight(Player player, Location entryLocation) {
-        if (arenaLocation == null || arenaLocation.getWorld() == null) {
-            player.sendMessage("§cArena ayarlanmamış. Bir yetkili /bossfight setarena kullanmalı.");
-            return;
-        }
         if (session != null) {
             player.sendMessage("§cŞu anda başka bir boss fight sürüyor. Lütfen bekle.");
             return;
         }
 
-        player.teleport(arenaLocation);
-        player.sendMessage("§6Boss fight başlıyor! Hazır ol...");
+        World world = entryLocation.getWorld();
+        if (world == null) {
+            player.sendMessage("§cArena oluşturulamadı.");
+            return;
+        }
 
         this.session = new ArenaSession(player.getUniqueId());
         this.session.entryLocation = entryLocation.clone();
+
+        // Arena merkezi: plakanın 1000 blok üstü.
+        Location boxCenter = entryLocation.clone();
+        boxCenter.setY(Math.min(entryLocation.getY() + 1000, world.getMaxHeight() - 20));
+        this.session.arenaCenter = boxCenter.clone();
+
+        // 32x32x32 cam kutuyu inşa et (içi boş, 6 yüzü cam).
+        buildGlassBox(boxCenter);
+
+        // Oyuncuyu kutunun içine (zeminin biraz üstüne) ışınla.
+        Location spawnIn = boxCenter.clone();
+        spawnIn.setY(boxCenter.getY() - 15); // zemin, kutunun tabanına yakın
+        player.teleport(spawnIn);
+        player.sendMessage("§6Boss fight başlıyor! Hazır ol...");
+
         // Kısa gecikme sonra ilk wave.
         new BukkitRunnable() {
             @Override
@@ -125,6 +140,65 @@ public class ArenaManager implements Listener {
                 startWave(0);
             }
         }.runTaskLater(plugin, 60L); // 3 sn
+    }
+
+    // Cam kutunun yarı boyutu (32x32x32 => merkezden 16 blok).
+    private static final int BOX_HALF = 16;
+
+    /**
+     * Merkez etrafında 32x32x32 içi boş cam kutu inşa eder.
+     * Kutu koordinatlarını session'a kaydeder (sonra temizlemek için).
+     */
+    private void buildGlassBox(Location center) {
+        World world = center.getWorld();
+        int cx = center.getBlockX();
+        int cy = center.getBlockY();
+        int cz = center.getBlockZ();
+
+        int minX = cx - BOX_HALF, maxX = cx + BOX_HALF;
+        int minY = cy - BOX_HALF, maxY = cy + BOX_HALF;
+        int minZ = cz - BOX_HALF, maxZ = cz + BOX_HALF;
+
+        session.boxMinX = minX; session.boxMaxX = maxX;
+        session.boxMinY = minY; session.boxMaxY = maxY;
+        session.boxMinZ = minZ; session.boxMaxZ = maxZ;
+        session.boxWorldName = world.getName();
+
+        for (int x = minX; x <= maxX; x++) {
+            for (int y = minY; y <= maxY; y++) {
+                for (int z = minZ; z <= maxZ; z++) {
+                    boolean isShell = (x == minX || x == maxX
+                            || y == minY || y == maxY
+                            || z == minZ || z == maxZ);
+                    org.bukkit.block.Block block = world.getBlockAt(x, y, z);
+                    if (isShell) {
+                        block.setType(Material.GLASS, false);
+                    } else {
+                        block.setType(Material.AIR, false);
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Cam kutuyu tamamen kaldırır (hepsini hava yapar).
+     */
+    private void removeGlassBox() {
+        if (session == null || session.boxWorldName == null) {
+            return;
+        }
+        World world = Bukkit.getWorld(session.boxWorldName);
+        if (world == null) {
+            return;
+        }
+        for (int x = session.boxMinX; x <= session.boxMaxX; x++) {
+            for (int y = session.boxMinY; y <= session.boxMaxY; y++) {
+                for (int z = session.boxMinZ; z <= session.boxMaxZ; z++) {
+                    world.getBlockAt(x, y, z).setType(Material.AIR, false);
+                }
+            }
+        }
     }
 
     private void startWave(int waveIndex) {
@@ -145,9 +219,12 @@ public class ArenaManager implements Listener {
             player.sendMessage("§eWave " + (waveIndex + 1) + " / " + waveCounts.size() + " geliyor!");
         }
 
-        World world = arenaLocation.getWorld();
+        World world = session.arenaCenter.getWorld();
+        Location floor = session.arenaCenter.clone();
+        floor.setY(session.arenaCenter.getY() - 15); // kutu zemini
         for (int i = 0; i < count; i++) {
-            Location spawnLoc = randomAround(arenaLocation, 6);
+            Location spawnLoc = randomAround(floor, 12);
+            spawnLoc.setY(floor.getY()); // zeminde spawn
             // Sadece iskelet veya zombi (creeper yok).
             EntityType type = ThreadLocalRandom.current().nextBoolean()
                     ? EntityType.ZOMBIE : EntityType.SKELETON;
@@ -167,8 +244,10 @@ public class ArenaManager implements Listener {
             player.sendMessage("§4§lBOSS GELİYOR!");
         }
 
-        World world = arenaLocation.getWorld();
-        Zombie boss = (Zombie) world.spawnEntity(arenaLocation, EntityType.ZOMBIE);
+        World world = session.arenaCenter.getWorld();
+        Location bossLoc = session.arenaCenter.clone();
+        bossLoc.setY(session.arenaCenter.getY() - 15); // kutu zemini
+        Zombie boss = (Zombie) world.spawnEntity(bossLoc, EntityType.ZOMBIE);
 
         boss.getPersistentDataContainer().set(keyArenaMob, PersistentDataType.BYTE, (byte) 1);
         boss.getPersistentDataContainer().set(keyBoss, PersistentDataType.BYTE, (byte) 1);
@@ -249,12 +328,8 @@ public class ArenaManager implements Listener {
         Location tLoc = target.getLocation();
         org.bukkit.util.Vector behind = tLoc.getDirection().normalize().multiply(-2.0);
         Location dest = tLoc.clone().add(behind);
-        World world = dest.getWorld();
-        if (world != null) {
-            int y = world.getHighestBlockYAt(dest.getBlockX(), dest.getBlockZ());
-            // Oyuncunun seviyesine yakın bir yükseklik seç.
-            dest.setY(Math.max(tLoc.getY(), y));
-        }
+        // Gökyüzü arenası: zemin araması yok, oyuncunun Y'sinde kal.
+        dest.setY(tLoc.getY());
         // Bossun hedefe bakmasını sağla.
         org.bukkit.util.Vector look = tLoc.toVector().subtract(dest.toVector());
         if (look.lengthSquared() > 0) {
@@ -262,7 +337,10 @@ public class ArenaManager implements Listener {
         }
         boss.teleport(dest);
         boss.setTarget(target);
-        world.playSound(dest, org.bukkit.Sound.ENTITY_ENDERMAN_TELEPORT, 1.0f, 0.8f);
+        World world = dest.getWorld();
+        if (world != null) {
+            world.playSound(dest, org.bukkit.Sound.ENTITY_ENDERMAN_TELEPORT, 1.0f, 0.8f);
+        }
     }
 
     /**
@@ -341,13 +419,24 @@ public class ArenaManager implements Listener {
      * Bölge: arena merkezinin çevresinde küresel bir alan (yarıçap 40 blok).
      */
     private boolean isInArenaZone(Location loc) {
-        if (arenaLocation == null || arenaLocation.getWorld() == null) {
+        if (session == null || session.arenaCenter == null || session.arenaCenter.getWorld() == null) {
             return false;
         }
-        if (loc.getWorld() == null || !loc.getWorld().equals(arenaLocation.getWorld())) {
+        if (loc.getWorld() == null || !loc.getWorld().equals(session.arenaCenter.getWorld())) {
             return false;
         }
-        return loc.distanceSquared(arenaLocation) <= 40 * 40;
+        return loc.distanceSquared(session.arenaCenter) <= 40 * 40;
+    }
+
+    /**
+     * Arena moblarının (zombi/iskelet) güneşte yanmasını engelle.
+     */
+    @EventHandler
+    public void onCombust(org.bukkit.event.entity.EntityCombustEvent event) {
+        if (event.getEntity().getPersistentDataContainer()
+                .has(keyArenaMob, PersistentDataType.BYTE)) {
+            event.setCancelled(true);
+        }
     }
 
     @EventHandler
@@ -396,9 +485,29 @@ public class ArenaManager implements Listener {
                 session.abilityTask = null;
             }
 
-            // Oyuncuyu plakaya bastığı yere geri ışınla.
-            if (player != null && entry != null && entry.getWorld() != null) {
-                player.teleport(entry);
+            // Kalan arena moblarını temizle.
+            World w = session.arenaCenter != null ? session.arenaCenter.getWorld() : null;
+            if (w != null) {
+                for (Entity e : w.getEntities()) {
+                    if (e.getPersistentDataContainer().has(keyArenaMob, PersistentDataType.BYTE)) {
+                        e.remove();
+                    }
+                }
+            }
+
+            // Cam kutuyu kaldır.
+            removeGlassBox();
+
+            // Oyuncuyu yatağına ışınla; yatak yoksa dünyanın spawn noktasına.
+            if (player != null) {
+                Location dest = player.getRespawnLocation();
+                if (dest == null) {
+                    World spawnWorld = (entry != null && entry.getWorld() != null)
+                            ? entry.getWorld()
+                            : Bukkit.getWorlds().get(0);
+                    dest = spawnWorld.getSpawnLocation();
+                }
+                player.teleport(dest);
             }
 
             session = null;
@@ -426,7 +535,7 @@ public class ArenaManager implements Listener {
      */
     @EventHandler
     public void onCreatureSpawn(CreatureSpawnEvent event) {
-        if (session == null || arenaLocation == null) {
+        if (session == null || session.arenaCenter == null) {
             return;
         }
         if (event.getEntityType() != EntityType.CREEPER) {
@@ -434,8 +543,8 @@ public class ArenaManager implements Listener {
         }
         // Arena çevresindeyse creeper spawn'ını iptal et.
         if (event.getLocation().getWorld() != null
-                && event.getLocation().getWorld().equals(arenaLocation.getWorld())
-                && event.getLocation().distanceSquared(arenaLocation) <= 30 * 30) {
+                && event.getLocation().getWorld().equals(session.arenaCenter.getWorld())
+                && event.getLocation().distanceSquared(session.arenaCenter) <= 30 * 30) {
             event.setCancelled(true);
         }
     }
@@ -573,13 +682,8 @@ public class ArenaManager implements Listener {
     private Location randomAround(Location center, int radius) {
         double dx = ThreadLocalRandom.current().nextDouble(-radius, radius);
         double dz = ThreadLocalRandom.current().nextDouble(-radius, radius);
-        Location loc = center.clone().add(dx, 0, dz);
-        World world = center.getWorld();
-        if (world != null) {
-            int y = world.getHighestBlockYAt(loc.getBlockX(), loc.getBlockZ());
-            loc.setY(y + 1);
-        }
-        return loc;
+        // Gökyüzü arenası: zemini arama, aynı Y'de kal.
+        return center.clone().add(dx, 0, dz);
     }
 
     public void cleanupAll() {
@@ -587,12 +691,13 @@ public class ArenaManager implements Listener {
             session.abilityTask.cancel();
             session.abilityTask = null;
         }
-        if (session != null && arenaLocation != null && arenaLocation.getWorld() != null) {
-            for (Entity e : arenaLocation.getWorld().getEntities()) {
+        if (session != null && session.arenaCenter != null && session.arenaCenter.getWorld() != null) {
+            for (Entity e : session.arenaCenter.getWorld().getEntities()) {
                 if (e.getPersistentDataContainer().has(keyArenaMob, PersistentDataType.BYTE)) {
                     e.remove();
                 }
             }
+            removeGlassBox();
         }
         session = null;
     }
@@ -606,6 +711,10 @@ public class ArenaManager implements Listener {
         boolean bossSpawned = false;
         UUID bossId;
         Location entryLocation;   // fight bitince dönülecek yer (plakaya basılan konum)
+        Location arenaCenter;     // cam kutunun merkezi (fight burada geçer)
+        // Cam kutu sınırları (temizlemek için).
+        String boxWorldName;
+        int boxMinX, boxMaxX, boxMinY, boxMaxY, boxMinZ, boxMaxZ;
         final List<UUID> aliveMobs = new ArrayList<>();
 
         // Boss yetenekleri.
