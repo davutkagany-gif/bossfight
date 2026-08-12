@@ -610,14 +610,14 @@ public class ArenaManager implements Listener {
      */
     public List<ItemStack> createArmorSet() {
         List<ItemStack> pieces = new ArrayList<>();
-        pieces.add(createArmorPiece(Material.NETHERITE_HELMET, "Miğfer", 8.0, 4.0));
-        pieces.add(createArmorPiece(Material.NETHERITE_CHESTPLATE, "Göğüslük", 16.0, 5.0));
-        pieces.add(createArmorPiece(Material.NETHERITE_LEGGINGS, "Pantolon", 14.0, 5.0));
-        pieces.add(createArmorPiece(Material.NETHERITE_BOOTS, "Bot", 8.0, 4.0));
+        pieces.add(createArmorPiece(Material.NETHERITE_HELMET, "Miğfer", "helmet", 8.0, 4.0));
+        pieces.add(createArmorPiece(Material.NETHERITE_CHESTPLATE, "Göğüslük", "chest", 16.0, 5.0));
+        pieces.add(createArmorPiece(Material.NETHERITE_LEGGINGS, "Pantolon", "legs", 14.0, 5.0));
+        pieces.add(createArmorPiece(Material.NETHERITE_BOOTS, "Bot", "boots", 8.0, 4.0));
         return pieces;
     }
 
-    private ItemStack createArmorPiece(Material material, String slotLabel,
+    private ItemStack createArmorPiece(Material material, String slotLabel, String keyName,
                                        double armorValue, double toughnessValue) {
         ItemStack item = new ItemStack(material);
         ItemMeta meta = item.getItemMeta();
@@ -635,7 +635,7 @@ public class ArenaManager implements Listener {
             // Ekstra armor değeri.
             meta.addAttributeModifier(Attribute.ARMOR,
                     new org.bukkit.attribute.AttributeModifier(
-                            new org.bukkit.NamespacedKey(plugin, "ancient_armor_" + slotLabel.toLowerCase()),
+                            new org.bukkit.NamespacedKey(plugin, "ancient_armor_" + keyName),
                             armorValue,
                             org.bukkit.attribute.AttributeModifier.Operation.ADD_NUMBER,
                             org.bukkit.inventory.EquipmentSlotGroup.ARMOR
@@ -644,7 +644,7 @@ public class ArenaManager implements Listener {
             // Armor toughness: hasar azaltmayı ciddi artırır.
             meta.addAttributeModifier(Attribute.ARMOR_TOUGHNESS,
                     new org.bukkit.attribute.AttributeModifier(
-                            new org.bukkit.NamespacedKey(plugin, "ancient_tough_" + slotLabel.toLowerCase()),
+                            new org.bukkit.NamespacedKey(plugin, "ancient_tough_" + keyName),
                             toughnessValue,
                             org.bukkit.attribute.AttributeModifier.Operation.ADD_NUMBER,
                             org.bukkit.inventory.EquipmentSlotGroup.ARMOR
