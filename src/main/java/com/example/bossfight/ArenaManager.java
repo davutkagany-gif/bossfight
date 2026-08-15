@@ -1004,7 +1004,7 @@ public class ArenaManager implements Listener {
         for (int i = 0; i < 40; i++) {
             int x = ThreadLocalRandom.current().nextInt(session.boxMinX + 1, session.boxMaxX);
             int z = ThreadLocalRandom.current().nextInt(session.boxMinZ + 1, session.boxMaxZ);
-            Block b = world.getBlockAt(x, floorY, z);
+            org.bukkit.block.Block b = world.getBlockAt(x, floorY, z);
             if (b.getType() == Material.AIR) {
                 b.setType(Material.FIRE, false);
             }
