@@ -23,7 +23,9 @@ import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.scheduler.BukkitRunnable;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -62,7 +64,14 @@ public class ArenaManager implements Listener {
     private final org.bukkit.NamespacedKey keyBoss;
     private final org.bukkit.NamespacedKey keySword;
     private final org.bukkit.NamespacedKey keyArmor;
+    private final org.bukkit.NamespacedKey keyBlazeWand;
     private double armorSetReduction;
+    private double blazeHealth;
+    private double blazeDropChance;
+    private String blazeName;
+    private String wandName;
+    private double wandDamage;
+    private long wandCooldownMs;
 
     public ArenaManager(BossFightPlugin plugin) {
         this.plugin = plugin;
@@ -70,6 +79,7 @@ public class ArenaManager implements Listener {
         this.keyBoss = new org.bukkit.NamespacedKey(plugin, "arena_boss");
         this.keySword = new org.bukkit.NamespacedKey(plugin, "ancient_sword");
         this.keyArmor = new org.bukkit.NamespacedKey(plugin, "ancient_armor");
+        this.keyBlazeWand = new org.bukkit.NamespacedKey(plugin, "blaze_wand");
         reloadArenaLocation();
     }
 
@@ -97,6 +107,12 @@ public class ArenaManager implements Listener {
         this.armorDropChance = plugin.getConfig().getDouble("armor-drop-chance", 5.0);
         this.armorName = color(plugin.getConfig().getString("armor-name", "&5Kadim Zırh"));
         this.armorSetReduction = plugin.getConfig().getDouble("armor-set-damage-reduction", 0.60);
+        this.blazeHealth = plugin.getConfig().getDouble("blaze-health", 800.0);
+        this.blazeDropChance = plugin.getConfig().getDouble("blaze-wand-drop-chance", 1.0);
+        this.blazeName = color(plugin.getConfig().getString("blaze-name", "&6Dev Blaze"));
+        this.wandName = color(plugin.getConfig().getString("wand-name", "&cSonsuz Alev Asası"));
+        this.wandDamage = plugin.getConfig().getDouble("wand-damage", 30.0);
+        this.wandCooldownMs = plugin.getConfig().getLong("wand-cooldown-ms", 1000);
     }
 
     private static String color(String s) {
@@ -515,27 +531,36 @@ public class ArenaManager implements Listener {
                 }
             }
 
-            // Kılıç: config şansı. Düşerse rastgele BİR katılımcıya verilir.
-            if (!onlineParticipants.isEmpty()
-                    && ThreadLocalRandom.current().nextDouble() * 100.0 < bossDropChance) {
-                Player lucky = onlineParticipants.get(
-                        ThreadLocalRandom.current().nextInt(onlineParticipants.size()));
-                lucky.getInventory().addItem(createSword());
-                broadcastToParticipants("§aBoss kılıcı düşürdü! §e→ " + lucky.getName());
-            }
-
-            // Zırh: config şansı. Düşerse rastgele BİR katılımcıya verilir.
-            if (!onlineParticipants.isEmpty()
-                    && ThreadLocalRandom.current().nextDouble() * 100.0 < armorDropChance) {
-                Player lucky = onlineParticipants.get(
-                        ThreadLocalRandom.current().nextInt(onlineParticipants.size()));
-                for (ItemStack piece : createArmorSet()) {
-                    lucky.getInventory().addItem(piece);
+            if (session.isBlaze) {
+                // BLAZE boss: %1 şansla Sonsuz Alev Asası, rastgele katılımcıya.
+                if (!onlineParticipants.isEmpty()
+                        && ThreadLocalRandom.current().nextDouble() * 100.0 < blazeDropChance) {
+                    Player lucky = onlineParticipants.get(
+                            ThreadLocalRandom.current().nextInt(onlineParticipants.size()));
+                    lucky.getInventory().addItem(createBlazeWand());
+                    broadcastToParticipants("§6Dev Blaze asasını düşürdü! §e→ " + lucky.getName());
                 }
-                broadcastToParticipants("§5Boss özel zırhı düşürdü! §e→ " + lucky.getName());
+                broadcastToParticipants("§6§lBlaze boss yenildi! Tebrikler.");
+            } else {
+                // ZOMBI boss: kılıç %15, zırh %5.
+                if (!onlineParticipants.isEmpty()
+                        && ThreadLocalRandom.current().nextDouble() * 100.0 < bossDropChance) {
+                    Player lucky = onlineParticipants.get(
+                            ThreadLocalRandom.current().nextInt(onlineParticipants.size()));
+                    lucky.getInventory().addItem(createSword());
+                    broadcastToParticipants("§aBoss kılıcı düşürdü! §e→ " + lucky.getName());
+                }
+                if (!onlineParticipants.isEmpty()
+                        && ThreadLocalRandom.current().nextDouble() * 100.0 < armorDropChance) {
+                    Player lucky = onlineParticipants.get(
+                            ThreadLocalRandom.current().nextInt(onlineParticipants.size()));
+                    for (ItemStack piece : createArmorSet()) {
+                        lucky.getInventory().addItem(piece);
+                    }
+                    broadcastToParticipants("§5Boss özel zırhı düşürdü! §e→ " + lucky.getName());
+                }
+                broadcastToParticipants("§6§lBoss fight tamamlandı! Tebrikler.");
             }
-
-            broadcastToParticipants("§6§lBoss fight tamamlandı! Tebrikler.");
 
             if (session.abilityTask != null) {
                 session.abilityTask.cancel();
@@ -757,6 +782,322 @@ public class ArenaManager implements Listener {
         return center.clone().add(dx, 0, dz);
     }
 
+    // ============================================================
+    //  BLAZE BOSS (nether temalı, ayrı fight)
+    // ============================================================
+
+    /**
+     * Blaze boss fight başlatır (altın plaka tetikler).
+     * Plakanın 1000 blok üstünde netherrack zeminli, cam duvarlı arena kurar.
+     */
+    public void startBlazeFight(Player player, Location entryLocation) {
+        if (session != null) {
+            if (session.joinLocked) {
+                player.sendMessage("§cBoss çıktı, artık katılamazsın.");
+                return;
+            }
+            if (session.participants.contains(player.getUniqueId())) {
+                player.sendMessage("§eZaten bu dövüştesin.");
+                return;
+            }
+            session.participants.add(player.getUniqueId());
+            Location jl = session.arenaCenter.clone();
+            jl.setY(session.arenaCenter.getY() - 15);
+            player.teleport(jl);
+            player.sendMessage("§aBoss dövüşüne katıldın!");
+            broadcastToParticipants("§e" + player.getName() + " dövüşe katıldı!");
+            return;
+        }
+
+        World world = entryLocation.getWorld();
+        if (world == null) {
+            player.sendMessage("§cArena oluşturulamadı.");
+            return;
+        }
+
+        this.session = new ArenaSession(player.getUniqueId());
+        this.session.isBlaze = true;
+        this.session.participants.add(player.getUniqueId());
+        this.session.entryLocation = entryLocation.clone();
+
+        Location boxCenter = entryLocation.clone();
+        boxCenter.setY(Math.min(entryLocation.getY() + 1000, world.getMaxHeight() - 20));
+        this.session.arenaCenter = boxCenter.clone();
+
+        buildNetherArena(boxCenter);
+
+        Location spawnIn = boxCenter.clone();
+        spawnIn.setY(boxCenter.getY() - 15);
+        player.teleport(spawnIn);
+        player.sendMessage("§6Blaze boss dövüşü başlıyor! Hazır ol...");
+
+        // Blaze fight'ta wave yok, direkt boss (biraz gecikmeyle).
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                spawnBlazeBoss();
+            }
+        }.runTaskLater(plugin, 60L);
+    }
+
+    /**
+     * Netherrack zeminli, cam duvarlı/tavanlı 32x32x32 arena.
+     */
+    private void buildNetherArena(Location center) {
+        World world = center.getWorld();
+        int cx = center.getBlockX(), cy = center.getBlockY(), cz = center.getBlockZ();
+        int minX = cx - BOX_HALF, maxX = cx + BOX_HALF;
+        int minY = cy - BOX_HALF, maxY = cy + BOX_HALF;
+        int minZ = cz - BOX_HALF, maxZ = cz + BOX_HALF;
+
+        session.boxMinX = minX; session.boxMaxX = maxX;
+        session.boxMinY = minY; session.boxMaxY = maxY;
+        session.boxMinZ = minZ; session.boxMaxZ = maxZ;
+        session.boxWorldName = world.getName();
+
+        for (int x = minX; x <= maxX; x++) {
+            for (int y = minY; y <= maxY; y++) {
+                for (int z = minZ; z <= maxZ; z++) {
+                    org.bukkit.block.Block block = world.getBlockAt(x, y, z);
+                    if (y == minY) {
+                        block.setType(Material.NETHERRACK, false); // zemin netherrack
+                    } else if (x == minX || x == maxX || y == maxY || z == minZ || z == maxZ) {
+                        block.setType(Material.GLASS, false); // duvar/tavan cam
+                    } else {
+                        block.setType(Material.AIR, false);
+                    }
+                }
+            }
+        }
+    }
+
+    private void spawnBlazeBoss() {
+        if (session == null) {
+            return;
+        }
+        session.joinLocked = true;
+        broadcastToParticipants("§4§lDEV BLAZE GELİYOR!");
+
+        World world = session.arenaCenter.getWorld();
+        Location loc = session.arenaCenter.clone();
+        loc.setY(session.arenaCenter.getY() - 13); // zeminin biraz üstü
+        org.bukkit.entity.Blaze boss = (org.bukkit.entity.Blaze) world.spawnEntity(loc, EntityType.BLAZE);
+
+        boss.getPersistentDataContainer().set(keyArenaMob, PersistentDataType.BYTE, (byte) 1);
+        boss.getPersistentDataContainer().set(keyBoss, PersistentDataType.BYTE, (byte) 1);
+
+        var scaleAttr = boss.getAttribute(Attribute.SCALE);
+        if (scaleAttr != null) {
+            scaleAttr.setBaseValue(3.0); // büyük
+        }
+        var maxHealth = boss.getAttribute(Attribute.MAX_HEALTH);
+        if (maxHealth != null) {
+            maxHealth.setBaseValue(blazeHealth);
+            boss.setHealth(maxHealth.getValue());
+        }
+        boss.customName(legacyComponent(blazeName));
+        boss.setCustomNameVisible(true);
+        boss.setRemoveWhenFarAway(false);
+
+        session.bossId = boss.getUniqueId();
+        session.bossSpawned = true;
+
+        long now = System.currentTimeMillis();
+        session.lastFireball = now;
+        session.lastRise = now;
+        session.lastRain = now;
+
+        startBlazeAbilities();
+    }
+
+    /**
+     * Blaze boss yetenek döngüsü:
+     *  - Ateş topu (2 sn)
+     *  - Havaya yükselip patlama + yer alev alması (10 sn)
+     *  - Ateş yağmuru (15 sn)
+     */
+    private void startBlazeAbilities() {
+        session.abilityTask = new BukkitRunnable() {
+            @Override
+            public void run() {
+                if (session == null || session.bossId == null || session.abilityTask == null) {
+                    cancel();
+                    return;
+                }
+                Entity be = Bukkit.getEntity(session.bossId);
+                if (!(be instanceof org.bukkit.entity.Blaze boss) || boss.isDead() || !boss.isValid()) {
+                    cancel();
+                    return;
+                }
+                Player target = nearestPlayer(boss.getLocation());
+                if (target == null) {
+                    return;
+                }
+                long now = System.currentTimeMillis();
+
+                // Ateş topu her 2 sn.
+                if (now - session.lastFireball >= 2000) {
+                    shootFireball2(boss, target);
+                    session.lastFireball = now;
+                }
+
+                // Havaya yükselip patlama her 10 sn.
+                if (now - session.lastRise >= 10000) {
+                    riseAndExplode(boss);
+                    session.lastRise = now;
+                }
+
+                // Ateş yağmuru her 15 sn.
+                if (now - session.lastRain >= 15000) {
+                    fireRain();
+                    session.lastRain = now;
+                }
+            }
+        }.runTaskTimer(plugin, 20L, 20L);
+    }
+
+    /** Blaze'in hedefe ateş topu atması. */
+    private void shootFireball2(org.bukkit.entity.Blaze boss, Player target) {
+        Location eye = boss.getEyeLocation();
+        org.bukkit.util.Vector dir = target.getEyeLocation().toVector()
+                .subtract(eye.toVector()).normalize();
+        org.bukkit.entity.SmallFireball fb =
+                boss.launchProjectile(org.bukkit.entity.SmallFireball.class, dir.multiply(1.2));
+        fb.setShooter(boss);
+        fb.setIsIncendiary(true);
+        boss.getWorld().playSound(eye, org.bukkit.Sound.ENTITY_BLAZE_SHOOT, 1.0f, 0.8f);
+    }
+
+    /** Blaze yavaşça yükselir, sonra patlar ve etraf alev alır. */
+    private void riseAndExplode(org.bukkit.entity.Blaze boss) {
+        broadcastToParticipants("§6Dev Blaze havaya yükseliyor...");
+        // 3 saniye boyunca yukarı it.
+        new BukkitRunnable() {
+            int ticks = 0;
+            @Override
+            public void run() {
+                if (boss.isDead() || !boss.isValid() || session == null) {
+                    cancel();
+                    return;
+                }
+                boss.setVelocity(new org.bukkit.util.Vector(0, 0.4, 0));
+                ticks += 5;
+                if (ticks >= 60) { // 3 sn
+                    cancel();
+                    // Patla: yer alev alsın.
+                    Location c = boss.getLocation();
+                    boss.getWorld().createExplosion(c, 0f, false, false); // hasarsız görsel patlama
+                    boss.getWorld().playSound(c, org.bukkit.Sound.ENTITY_GENERIC_EXPLODE, 1.5f, 0.7f);
+                    spreadFireOnFloor();
+                }
+            }
+        }.runTaskTimer(plugin, 0L, 5L);
+    }
+
+    /** Arena zemininde rastgele noktaları ateşe verir. */
+    private void spreadFireOnFloor() {
+        if (session == null || session.arenaCenter == null) {
+            return;
+        }
+        World world = session.arenaCenter.getWorld();
+        int floorY = session.boxMinY + 1;
+        for (int i = 0; i < 40; i++) {
+            int x = ThreadLocalRandom.current().nextInt(session.boxMinX + 1, session.boxMaxX);
+            int z = ThreadLocalRandom.current().nextInt(session.boxMinZ + 1, session.boxMaxZ);
+            Block b = world.getBlockAt(x, floorY, z);
+            if (b.getType() == Material.AIR) {
+                b.setType(Material.FIRE, false);
+            }
+        }
+    }
+
+    /** Ateş yağmuru: tavandan aşağı ateş topları düşer. */
+    private void fireRain() {
+        if (session == null || session.arenaCenter == null) {
+            return;
+        }
+        broadcastToParticipants("§cAteş yağmuru!");
+        World world = session.arenaCenter.getWorld();
+        int topY = session.boxMaxY - 1;
+        for (int i = 0; i < 15; i++) {
+            int x = ThreadLocalRandom.current().nextInt(session.boxMinX + 1, session.boxMaxX);
+            int z = ThreadLocalRandom.current().nextInt(session.boxMinZ + 1, session.boxMaxZ);
+            Location spawn = new Location(world, x + 0.5, topY, z + 0.5);
+            org.bukkit.entity.SmallFireball fb = (org.bukkit.entity.SmallFireball)
+                    world.spawnEntity(spawn, EntityType.SMALL_FIREBALL);
+            fb.setDirection(new org.bukkit.util.Vector(0, -1, 0));
+            fb.setIsIncendiary(true);
+        }
+    }
+
+    /** Sonsuz Alev Asası oluşturur. */
+    public ItemStack createBlazeWand() {
+        ItemStack wand = new ItemStack(Material.BLAZE_ROD);
+        ItemMeta meta = wand.getItemMeta();
+        if (meta != null) {
+            meta.displayName(legacyComponent(wandName));
+            meta.setEnchantmentGlintOverride(true);
+            meta.setUnbreakable(true);
+            meta.getPersistentDataContainer().set(keyBlazeWand, PersistentDataType.BYTE, (byte) 1);
+            wand.setItemMeta(meta);
+        }
+        return wand;
+    }
+
+    private boolean isBlazeWand(ItemStack item) {
+        if (item == null || item.getType() != Material.BLAZE_ROD) {
+            return false;
+        }
+        ItemMeta meta = item.getItemMeta();
+        return meta != null && meta.getPersistentDataContainer()
+                .has(keyBlazeWand, PersistentDataType.BYTE);
+    }
+
+    // Asa cooldown takibi (oyuncu bazında).
+    private final Map<UUID, Long> wandCooldowns = new HashMap<>();
+
+    /** Asayla sağ tık: ateş topu at (cooldown 1 sn). */
+    @EventHandler
+    public void onWandUse(org.bukkit.event.player.PlayerInteractEvent event) {
+        if (event.getAction() != org.bukkit.event.block.Action.RIGHT_CLICK_AIR
+                && event.getAction() != org.bukkit.event.block.Action.RIGHT_CLICK_BLOCK) {
+            return;
+        }
+        Player player = event.getPlayer();
+        if (!isBlazeWand(player.getInventory().getItemInMainHand())) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        Long last = wandCooldowns.get(player.getUniqueId());
+        if (last != null && now - last < wandCooldownMs) {
+            return; // cooldown
+        }
+        wandCooldowns.put(player.getUniqueId(), now);
+
+        org.bukkit.util.Vector dir = player.getEyeLocation().getDirection().normalize();
+        org.bukkit.entity.SmallFireball fb =
+                player.launchProjectile(org.bukkit.entity.SmallFireball.class, dir.multiply(1.5));
+        fb.setShooter(player);
+        fb.setIsIncendiary(true);
+        fb.getPersistentDataContainer().set(keyBlazeWand, PersistentDataType.BYTE, (byte) 1);
+        player.getWorld().playSound(player.getLocation(),
+                org.bukkit.Sound.ENTITY_BLAZE_SHOOT, 1.0f, 1.2f);
+    }
+
+    /** Asadan çıkan ateş topunun hasarını 30 yap ve hedefi yak. */
+    @EventHandler
+    public void onWandFireballHit(org.bukkit.event.entity.EntityDamageByEntityEvent event) {
+        if (!(event.getDamager() instanceof org.bukkit.entity.SmallFireball fb)) {
+            return;
+        }
+        if (fb.getPersistentDataContainer().has(keyBlazeWand, PersistentDataType.BYTE)) {
+            event.setDamage(wandDamage);
+            if (event.getEntity() instanceof LivingEntity le) {
+                le.setFireTicks(100); // 5 sn yansın
+            }
+        }
+    }
+
     public void cleanupAll() {
         if (session != null && session.abilityTask != null) {
             session.abilityTask.cancel();
@@ -782,6 +1123,9 @@ public class ArenaManager implements Listener {
         boolean joinLocked = false; // boss gelince true olur, yeni katılım engellenir
         int currentWave = 0;
         boolean bossSpawned = false;
+        boolean isBlaze = false;  // bu fight blaze boss fight'ı mı
+        long lastRise = 0L;       // blaze: son havaya yükselme
+        long lastRain = 0L;       // blaze: son ateş yağmuru
         UUID bossId;
         Location entryLocation;   // fight bitince dönülecek yer (plakaya basılan konum)
         Location arenaCenter;     // cam kutunun merkezi (fight burada geçer)
