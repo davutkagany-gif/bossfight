@@ -63,3 +63,19 @@ armor-name: "&5Kadim Zırh"
 # Tam Kadim zırh seti giyildiğinde alınan hasar azaltma oranı (0.0 - 1.0).
 # 0.60 => %60 azaltma. Oyuncu hasar alabilir ama yine de güçlü korunur.
 armor-set-damage-reduction: 0.60
+
+# ==========================================================
+#  BLAZE BOSS (altın plaka ile tetiklenir)
+# ==========================================================
+# Blaze boss can değeri (max ~1024).
+blaze-health: 800.0
+# Blaze ismi.
+blaze-name: "&6Dev Blaze"
+
+# Sonsuz Alev Asası (blaze bosstan %1 şansla düşer).
+blaze-wand-drop-chance: 1.0
+wand-name: "&cSonsuz Alev Asası"
+# Asanın ateş topu hasarı.
+wand-damage: 30.0
+# Asa cooldown (milisaniye). 1000 => 1 saniye.
+wand-cooldown-ms: 1000
