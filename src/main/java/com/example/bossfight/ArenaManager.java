@@ -73,6 +73,32 @@ public class ArenaManager implements Listener {
     private double wandDamage;
     private long wandCooldownMs;
 
+    // Aktif fight'ın plaka konumu (fight bitince kaldırılır).
+    private Location activePlateLoc;
+
+    /**
+     * Fight'ı tetikleyen plaka konumunu kaydeder (fight bitince kaldırmak için).
+     */
+    public void registerPlate(Location plateLoc) {
+        this.activePlateLoc = (plateLoc != null) ? plateLoc.clone() : null;
+    }
+
+    /**
+     * Aktif fight plakasını dünyadan kaldırır.
+     */
+    private void removeActivePlate() {
+        if (activePlateLoc == null) {
+            return;
+        }
+        org.bukkit.block.Block b = activePlateLoc.getBlock();
+        Material t = b.getType();
+        if (t == Material.HEAVY_WEIGHTED_PRESSURE_PLATE
+                || t == Material.LIGHT_WEIGHTED_PRESSURE_PLATE) {
+            b.setType(Material.AIR, false);
+        }
+        activePlateLoc = null;
+    }
+
     public ArenaManager(BossFightPlugin plugin) {
         this.plugin = plugin;
         this.keyArenaMob = new org.bukkit.NamespacedKey(plugin, "arena_mob");
@@ -579,6 +605,9 @@ public class ArenaManager implements Listener {
 
             // Cam kutuyu kaldır.
             removeGlassBox();
+
+            // Fight plakasını kaldır.
+            removeActivePlate();
 
             // TÜM katılımcıları yatağına (yoksa dünya spawn'ına) ışınla.
             for (Player p : onlineParticipants) {
@@ -1111,6 +1140,7 @@ public class ArenaManager implements Listener {
             }
             removeGlassBox();
         }
+        removeActivePlate();
         session = null;
     }
 
