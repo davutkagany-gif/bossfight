@@ -51,8 +51,8 @@ boss-name: "&cKadim Zombi"
 # Kılıç ismi.
 sword-name: "&6Kadim Kılıç"
 
-# Kılıç hasarı (toplam vuruş hasarı). 200 => tek vuruşta 200 hasar.
-sword-damage: 200.0
+# Kılıç hasarı (toplam vuruş hasarı). 50 => tek vuruşta 50 hasar.
+sword-damage: 50.0
 
 # Özel zırf düşme şansı (%). 5 => %5
 armor-drop-chance: 5.0
@@ -61,5 +61,5 @@ armor-drop-chance: 5.0
 armor-name: "&5Kadim Zırh"
 
 # Tam Kadim zırh seti giyildiğinde alınan hasar azaltma oranı (0.0 - 1.0).
-# 0.9 => %90 azaltma. 200 hasarlık kılıç bu sayede ~20 hasara düşer, oyuncu dayanır.
-armor-set-damage-reduction: 0.92
+# 0.60 => %60 azaltma. Oyuncu hasar alabilir ama yine de güçlü korunur.
+armor-set-damage-reduction: 0.60
