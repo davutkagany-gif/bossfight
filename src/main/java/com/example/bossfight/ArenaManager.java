@@ -508,8 +508,8 @@ public class ArenaManager implements Listener {
 
             // Katılımcı listesini topla (online olanlar).
             List<Player> onlineParticipants = new ArrayList<>();
-            for (UUID id : session.participants) {
-                Player p = Bukkit.getPlayer(id);
+            for (UUID pid : session.participants) {
+                Player p = Bukkit.getPlayer(pid);
                 if (p != null) {
                     onlineParticipants.add(p);
                 }
