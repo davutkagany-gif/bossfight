@@ -70,8 +70,13 @@ public final class BossFightPlugin extends JavaPlugin {
                     sender.sendMessage("§cBu komutu oyuncu olarak kullan.");
                     return true;
                 }
-                boolean ok = plateManager.spawnPlateNear(player.getLocation());
-                sender.sendMessage(ok ? "§aPlaka spawn edildi." : "§cUygun yer bulunamadı ya da limit dolu.");
+                // İkinci argüman: "zombie" (varsayılan) veya "blaze".
+                String type = (args.length >= 2 && args[1].equalsIgnoreCase("blaze"))
+                        ? "blaze" : "zombie";
+                boolean ok = plateManager.spawnPlateNear(player.getLocation(), type);
+                sender.sendMessage(ok
+                        ? "§a" + (type.equals("blaze") ? "Blaze" : "Zombi") + " plakası spawn edildi."
+                        : "§cUygun yer bulunamadı ya da limit dolu.");
             }
             case "setarena" -> {
                 if (!(sender instanceof Player player)) {
@@ -111,7 +116,15 @@ public final class BossFightPlugin extends JavaPlugin {
                 }
                 sender.sendMessage("§aKadim Zırh seti envanterine eklendi.");
             }
-            default -> sender.sendMessage("§eKullanım: /bossfight <spawnplate|setarena|reload|sword|armor>");
+            case "wand" -> {
+                if (!(sender instanceof Player player)) {
+                    sender.sendMessage("§cBu komutu oyuncu olarak kullan.");
+                    return true;
+                }
+                player.getInventory().addItem(arenaManager.createBlazeWand());
+                sender.sendMessage("§aSonsuz Alev Asası envanterine eklendi.");
+            }
+            default -> sender.sendMessage("§eKullanım: /bossfight <spawnplate [zombie|blaze]|setarena|reload|sword|armor|wand>");
         }
         return true;
     }
