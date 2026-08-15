@@ -96,7 +96,7 @@ public class ArenaManager implements Listener {
         this.swordDamage = plugin.getConfig().getDouble("sword-damage", 200.0);
         this.armorDropChance = plugin.getConfig().getDouble("armor-drop-chance", 5.0);
         this.armorName = color(plugin.getConfig().getString("armor-name", "&5Kadim Zırh"));
-        this.armorSetReduction = plugin.getConfig().getDouble("armor-set-damage-reduction", 0.92);
+        this.armorSetReduction = plugin.getConfig().getDouble("armor-set-damage-reduction", 0.60);
     }
 
     private static String color(String s) {
@@ -109,8 +109,23 @@ public class ArenaManager implements Listener {
      * @param entryLocation oyuncunun plakaya bastığı yer (fight bitince buraya döner).
      */
     public void startFight(Player player, Location entryLocation) {
+        // Zaten bir fight varsa: katılmayı dene.
         if (session != null) {
-            player.sendMessage("§cŞu anda başka bir boss fight sürüyor. Lütfen bekle.");
+            if (session.joinLocked) {
+                player.sendMessage("§cBoss çıktı, artık katılamazsın. Bir sonrakini bekle.");
+                return;
+            }
+            if (session.participants.contains(player.getUniqueId())) {
+                player.sendMessage("§eZaten bu dövüştesin.");
+                return;
+            }
+            // Katıl: aynı arenaya ışınla.
+            session.participants.add(player.getUniqueId());
+            Location joinLoc = session.arenaCenter.clone();
+            joinLoc.setY(session.arenaCenter.getY() - 15);
+            player.teleport(joinLoc);
+            player.sendMessage("§aBoss dövüşüne katıldın!");
+            broadcastToParticipants("§e" + player.getName() + " dövüşe katıldı!");
             return;
         }
 
@@ -121,6 +136,7 @@ public class ArenaManager implements Listener {
         }
 
         this.session = new ArenaSession(player.getUniqueId());
+        this.session.participants.add(player.getUniqueId());
         this.session.entryLocation = entryLocation.clone();
 
         // Arena merkezi: plakanın 1000 blok üstü.
@@ -218,10 +234,7 @@ public class ArenaManager implements Listener {
         session.aliveMobs.clear();
 
         int count = waveCounts.get(waveIndex);
-        Player player = Bukkit.getPlayer(session.playerId);
-        if (player != null) {
-            player.sendMessage("§eWave " + (waveIndex + 1) + " / " + waveCounts.size() + " geliyor!");
-        }
+        broadcastToParticipants("§eWave " + (waveIndex + 1) + " / " + waveCounts.size() + " geliyor!");
 
         World world = session.arenaCenter.getWorld();
         Location floor = session.arenaCenter.clone();
@@ -239,14 +252,28 @@ public class ArenaManager implements Listener {
         }
     }
 
+    /**
+     * Tüm katılımcılara mesaj gönderir.
+     */
+    private void broadcastToParticipants(String msg) {
+        if (session == null) {
+            return;
+        }
+        for (UUID id : session.participants) {
+            Player p = Bukkit.getPlayer(id);
+            if (p != null) {
+                p.sendMessage(msg);
+            }
+        }
+    }
+
     private void spawnBoss() {
         if (session == null) {
             return;
         }
-        Player player = Bukkit.getPlayer(session.playerId);
-        if (player != null) {
-            player.sendMessage("§4§lBOSS GELİYOR!");
-        }
+        // Boss geldi: artık yeni katılım yok.
+        session.joinLocked = true;
+        broadcastToParticipants("§4§lBOSS GELİYOR!");
 
         World world = session.arenaCenter.getWorld();
         Location bossLoc = session.arenaCenter.clone();
@@ -326,10 +353,7 @@ public class ArenaManager implements Listener {
                         session.lastHeal = now;
                         boss.getWorld().playSound(boss.getLocation(),
                                 org.bukkit.Sound.ENTITY_WITHER_SPAWN, 0.6f, 1.5f);
-                        Player p = Bukkit.getPlayer(session.playerId);
-                        if (p != null) {
-                            p.sendMessage("§cBoss canını yeniledi!");
-                        }
+                        broadcastToParticipants("§cBoss canını yeniledi!");
                     }
                 }
 
@@ -478,34 +502,40 @@ public class ArenaManager implements Listener {
                 .has(keyBoss, PersistentDataType.BYTE);
 
         if (isBoss && id.equals(session.bossId)) {
-            // Normal zombi droplarını temizle.
+            // Boss'un kendi düşürdüğü item'ları event'ten temizle (elle vereceğiz).
             event.getDrops().clear();
             event.setDroppedExp(0);
 
-            Player player = Bukkit.getPlayer(session.playerId);
-            Location entry = session.entryLocation;
-
-            // Kılıç: config şansı (varsayılan %15).
-            if (ThreadLocalRandom.current().nextDouble() * 100.0 < bossDropChance) {
-                event.getDrops().add(createSword());
-                if (player != null) {
-                    player.sendMessage("§aBoss kılıcı düşürdü!");
+            // Katılımcı listesini topla (online olanlar).
+            List<Player> onlineParticipants = new ArrayList<>();
+            for (UUID id : session.participants) {
+                Player p = Bukkit.getPlayer(id);
+                if (p != null) {
+                    onlineParticipants.add(p);
                 }
             }
 
-            // Özel zırh: config şansı (varsayılan %5).
-            if (ThreadLocalRandom.current().nextDouble() * 100.0 < armorDropChance) {
+            // Kılıç: config şansı. Düşerse rastgele BİR katılımcıya verilir.
+            if (!onlineParticipants.isEmpty()
+                    && ThreadLocalRandom.current().nextDouble() * 100.0 < bossDropChance) {
+                Player lucky = onlineParticipants.get(
+                        ThreadLocalRandom.current().nextInt(onlineParticipants.size()));
+                lucky.getInventory().addItem(createSword());
+                broadcastToParticipants("§aBoss kılıcı düşürdü! §e→ " + lucky.getName());
+            }
+
+            // Zırh: config şansı. Düşerse rastgele BİR katılımcıya verilir.
+            if (!onlineParticipants.isEmpty()
+                    && ThreadLocalRandom.current().nextDouble() * 100.0 < armorDropChance) {
+                Player lucky = onlineParticipants.get(
+                        ThreadLocalRandom.current().nextInt(onlineParticipants.size()));
                 for (ItemStack piece : createArmorSet()) {
-                    event.getDrops().add(piece);
+                    lucky.getInventory().addItem(piece);
                 }
-                if (player != null) {
-                    player.sendMessage("§5Boss özel zırhı düşürdü!");
-                }
+                broadcastToParticipants("§5Boss özel zırhı düşürdü! §e→ " + lucky.getName());
             }
 
-            if (player != null) {
-                player.sendMessage("§6§lBoss fight tamamlandı! Tebrikler.");
-            }
+            broadcastToParticipants("§6§lBoss fight tamamlandı! Tebrikler.");
 
             if (session.abilityTask != null) {
                 session.abilityTask.cancel();
@@ -525,16 +555,13 @@ public class ArenaManager implements Listener {
             // Cam kutuyu kaldır.
             removeGlassBox();
 
-            // Oyuncuyu yatağına ışınla; yatak yoksa dünyanın spawn noktasına.
-            if (player != null) {
-                Location dest = player.getRespawnLocation();
+            // TÜM katılımcıları yatağına (yoksa dünya spawn'ına) ışınla.
+            for (Player p : onlineParticipants) {
+                Location dest = p.getRespawnLocation();
                 if (dest == null) {
-                    World spawnWorld = (entry != null && entry.getWorld() != null)
-                            ? entry.getWorld()
-                            : Bukkit.getWorlds().get(0);
-                    dest = spawnWorld.getSpawnLocation();
+                    dest = Bukkit.getWorlds().get(0).getSpawnLocation();
                 }
-                player.teleport(dest);
+                p.teleport(dest);
             }
 
             session = null;
@@ -668,6 +695,23 @@ public class ArenaManager implements Listener {
     }
 
     /**
+     * Arena katılımcıları birbirine vuramaz (friendly fire kapalı).
+     */
+    @EventHandler(priority = org.bukkit.event.EventPriority.LOWEST)
+    public void onFriendlyFire(org.bukkit.event.entity.EntityDamageByEntityEvent event) {
+        if (session == null) {
+            return;
+        }
+        if (event.getDamager() instanceof Player attacker
+                && event.getEntity() instanceof Player victim) {
+            if (session.participants.contains(attacker.getUniqueId())
+                    && session.participants.contains(victim.getUniqueId())) {
+                event.setCancelled(true);
+            }
+        }
+    }
+
+    /**
      * Kılıç hasarı: saldırgan Kadim kılıç tutuyorsa hasarı tam swordDamage yap.
      * LOWEST önce çalışır ki zırh azaltması sonradan bu değeri işlesin.
      */
@@ -733,7 +777,9 @@ public class ArenaManager implements Listener {
      * Tek aktif fight'ın durumunu tutar.
      */
     private static final class ArenaSession {
-        final UUID playerId;
+        final UUID playerId;      // fight'ı başlatan
+        final java.util.Set<UUID> participants = new java.util.HashSet<>(); // tüm katılımcılar
+        boolean joinLocked = false; // boss gelince true olur, yeni katılım engellenir
         int currentWave = 0;
         boolean bossSpawned = false;
         UUID bossId;
