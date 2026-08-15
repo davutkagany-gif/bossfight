@@ -148,16 +148,14 @@ public class PlateManager implements Listener {
 
         Player player = event.getPlayer();
 
-        // Plakayı tüket ve kaldır.
-        activePlates.remove(plateLoc);
-        block.setType(Material.AIR, false);
-
-        // İlgili boss fight'ı başlat.
+        // Plakayı fight boyunca BIRAKMA — herkes basıp katılabilsin.
+        // Fight bitince ArenaManager plakayı kaldıracak.
         if (bossType.equals("blaze")) {
             arenaManager.startBlazeFight(player, player.getLocation());
         } else {
             arenaManager.startFight(player, player.getLocation());
         }
+        arenaManager.registerPlate(plateLoc);
     }
 
     public void clearAllPlates() {
