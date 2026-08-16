@@ -1158,11 +1158,21 @@ public class ArenaManager implements Listener {
                 continue; // biz ve diğer oyuncular hariç
             }
             if (e instanceof LivingEntity le) {
-                le.damage(novaDamage, caster);
+                // Invulnerability frame'i sıfırla ki hasar kesin işlensin.
+                le.setNoDamageTicks(0);
                 le.setFireTicks(100);
+                // Doğrudan can düşür (event override'larından etkilenmez).
+                double newHp = le.getHealth() - novaDamage;
+                if (newHp <= 0) {
+                    le.setHealth(0); // öldür
+                } else {
+                    le.setHealth(newHp);
+                    // Görsel "hasar aldı" efekti için ufak bir damage da uygula.
+                    le.damage(0.01, caster);
+                }
             }
         }
-        caster.sendMessage("§6Nova patlaması! §e(300 hasar)");
+        caster.sendMessage("§6Nova patlaması! §e(" + (int) novaDamage + " hasar)");
     }
 
     /** Asadan çıkan ateş topunun hasarını ayarla ve hedefi yak. */
