@@ -72,6 +72,9 @@ public class ArenaManager implements Listener {
     private String wandName;
     private double wandDamage;
     private long wandCooldownMs;
+    private float wandExplosionPower;
+    private double novaDamage;
+    private long novaCooldownMs;
 
     // Aktif fight'ın plaka konumu (fight bitince kaldırılır).
     private Location activePlateLoc;
@@ -137,8 +140,11 @@ public class ArenaManager implements Listener {
         this.blazeDropChance = plugin.getConfig().getDouble("blaze-wand-drop-chance", 1.0);
         this.blazeName = color(plugin.getConfig().getString("blaze-name", "&6Dev Blaze"));
         this.wandName = color(plugin.getConfig().getString("wand-name", "&cSonsuz Alev Asası"));
-        this.wandDamage = plugin.getConfig().getDouble("wand-damage", 30.0);
+        this.wandDamage = plugin.getConfig().getDouble("wand-damage", 150.0);
         this.wandCooldownMs = plugin.getConfig().getLong("wand-cooldown-ms", 1000);
+        this.wandExplosionPower = (float) plugin.getConfig().getDouble("wand-explosion-power", 3.0);
+        this.novaDamage = plugin.getConfig().getDouble("wand-nova-damage", 300.0);
+        this.novaCooldownMs = plugin.getConfig().getLong("wand-nova-cooldown-seconds", 40) * 1000L;
     }
 
     private static String color(String s) {
@@ -1084,8 +1090,9 @@ public class ArenaManager implements Listener {
 
     // Asa cooldown takibi (oyuncu bazında).
     private final Map<UUID, Long> wandCooldowns = new HashMap<>();
+    private final Map<UUID, Long> novaCooldowns = new HashMap<>();
 
-    /** Asayla sağ tık: ateş topu at (cooldown 1 sn). */
+    /** Asa kullanımı: Shift+sağ tık = nova patlaması, normal sağ tık = ateş topu. */
     @EventHandler
     public void onWandUse(org.bukkit.event.player.PlayerInteractEvent event) {
         if (event.getAction() != org.bukkit.event.block.Action.RIGHT_CLICK_AIR
@@ -1097,9 +1104,24 @@ public class ArenaManager implements Listener {
             return;
         }
         long now = System.currentTimeMillis();
+
+        // SHIFT + sağ tık => Nova patlaması (300 hasar, 40 sn cooldown, biz hariç herkese).
+        if (player.isSneaking()) {
+            Long lastNova = novaCooldowns.get(player.getUniqueId());
+            if (lastNova != null && now - lastNova < novaCooldownMs) {
+                long kalan = (novaCooldownMs - (now - lastNova)) / 1000;
+                player.sendMessage("§cNova hazır değil. " + kalan + " sn kaldı.");
+                return;
+            }
+            novaCooldowns.put(player.getUniqueId(), now);
+            castNova(player);
+            return;
+        }
+
+        // Normal sağ tık => ateş topu (1 sn cooldown).
         Long last = wandCooldowns.get(player.getUniqueId());
         if (last != null && now - last < wandCooldownMs) {
-            return; // cooldown
+            return;
         }
         wandCooldowns.put(player.getUniqueId(), now);
 
@@ -1113,7 +1135,37 @@ public class ArenaManager implements Listener {
                 org.bukkit.Sound.ENTITY_BLAZE_SHOOT, 1.0f, 1.2f);
     }
 
-    /** Asadan çıkan ateş topunun hasarını 30 yap ve hedefi yak. */
+    /**
+     * Nova: oyuncunun etrafında patlama efekti + yarıçaptaki DÜŞMANLARA 300 hasar.
+     * Kullanan oyuncuya ve diğer oyunculara zarar vermez.
+     */
+    private void castNova(Player caster) {
+        Location center = caster.getLocation();
+        World world = center.getWorld();
+        if (world == null) {
+            return;
+        }
+        double radius = 8.0;
+
+        // Görsel + ses (blok kırmaz, hasar vermez — hasarı elle vereceğiz).
+        world.spawnParticle(org.bukkit.Particle.EXPLOSION_EMITTER, center, 3);
+        world.spawnParticle(org.bukkit.Particle.FLAME, center, 100, radius / 2, 1, radius / 2, 0.1);
+        world.playSound(center, org.bukkit.Sound.ENTITY_GENERIC_EXPLODE, 2.0f, 0.8f);
+
+        // Yarıçaptaki canlılara hasar — oyuncular hariç.
+        for (Entity e : world.getNearbyEntities(center, radius, radius, radius)) {
+            if (e instanceof Player) {
+                continue; // biz ve diğer oyuncular hariç
+            }
+            if (e instanceof LivingEntity le) {
+                le.damage(novaDamage, caster);
+                le.setFireTicks(100);
+            }
+        }
+        caster.sendMessage("§6Nova patlaması! §e(300 hasar)");
+    }
+
+    /** Asadan çıkan ateş topunun hasarını ayarla ve hedefi yak. */
     @EventHandler
     public void onWandFireballHit(org.bukkit.event.entity.EntityDamageByEntityEvent event) {
         if (!(event.getDamager() instanceof org.bukkit.entity.SmallFireball fb)) {
@@ -1124,6 +1176,24 @@ public class ArenaManager implements Listener {
             if (event.getEntity() instanceof LivingEntity le) {
                 le.setFireTicks(100); // 5 sn yansın
             }
+        }
+    }
+
+    /** Asa ateş topu bir yere/varlığa çarpınca patlama oluştur (blok kırmaz). */
+    @EventHandler
+    public void onWandFireballLand(org.bukkit.event.entity.ProjectileHitEvent event) {
+        if (!(event.getEntity() instanceof org.bukkit.entity.SmallFireball fb)) {
+            return;
+        }
+        if (!fb.getPersistentDataContainer().has(keyBlazeWand, PersistentDataType.BYTE)) {
+            return;
+        }
+        Location loc = fb.getLocation();
+        World world = loc.getWorld();
+        if (world != null) {
+            // Patlama: görsel + alan hasarı, blok KIRMAZ (breakBlocks=false), ateş çıkarmaz (setFire=false).
+            world.createExplosion(loc, wandExplosionPower, false, false);
+            world.playSound(loc, org.bukkit.Sound.ENTITY_GENERIC_EXPLODE, 1.2f, 1.0f);
         }
     }
 
