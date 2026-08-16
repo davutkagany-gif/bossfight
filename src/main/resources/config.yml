@@ -62,7 +62,7 @@ armor-name: "&5Kadim Zırh"
 
 # Tam Kadim zırh seti giyildiğinde alınan hasar azaltma oranı (0.0 - 1.0).
 # 0.60 => %60 azaltma. Oyuncu hasar alabilir ama yine de güçlü korunur.
-armor-set-damage-reduction: 0.60
+armor-set-damage-reduction: 0.35
 
 # ==========================================================
 #  BLAZE BOSS (altın plaka ile tetiklenir)
