@@ -68,7 +68,7 @@ armor-set-damage-reduction: 0.60
 #  BLAZE BOSS (altın plaka ile tetiklenir)
 # ==========================================================
 # Blaze boss can değeri (max ~1024).
-blaze-health: 800.0
+blaze-health: 1000.0
 # Blaze ismi.
 blaze-name: "&6Dev Blaze"
 
@@ -76,12 +76,12 @@ blaze-name: "&6Dev Blaze"
 blaze-wand-drop-chance: 1.0
 wand-name: "&cSonsuz Alev Asası"
 # Asanın ateş topu hasarı.
-wand-damage: 150.0
+wand-damage: 300.0
 # Asa cooldown (milisaniye). 1000 => 1 saniye.
 wand-cooldown-ms: 1000
 # Asa ateş topu çarpınca patlama gücü (görsel/alan, blok kırmaz). 3.0 makul.
 wand-explosion-power: 3.0
 
 # Asa Nova (Shift+sağ tık): etrafa patlama, düşmanlara hasar.
-wand-nova-damage: 300.0
+wand-nova-damage: 1000.0
 wand-nova-cooldown-seconds: 40
